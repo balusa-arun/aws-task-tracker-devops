@@ -50,9 +50,9 @@ Resources:
           FromPort: 22
           ToPort: 22
           CidrIp: !Ref SSHAllowedCIDR
-      SecurityGroupEgress:
-        - IpProtocol: -1
-          CidrIp: 0.0.0.0/0
+#      SecurityGroupEgress:
+#       - IpProtocol: -1
+#          CidrIp: 0.0.0.0/0
   AppRole:
     Type: AWS::IAM::Role
     Properties:
