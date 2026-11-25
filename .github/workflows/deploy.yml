@@ -1,0 +1,46 @@
+name: CI and Deploy to EC2
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install
+      - run: npm test
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+      - name: Upload application
+        run: |
+          scp -i ~/.ssh/deploy_key -r app/* ec2-user@${{ secrets.EC2_HOST }}:/opt/task-tracker/
+      - name: Install and restart app
+        run: |
+          ssh -i ~/.ssh/deploy_key ec2-user@${{ secrets.EC2_HOST }} <<'SSH'
+            set -e
+            cd /opt/task-tracker
+            npm install --omit=dev
+            mkdir -p public
+            sudo systemctl restart task-tracker
+            sudo systemctl status task-tracker --no-pager
+          SSH

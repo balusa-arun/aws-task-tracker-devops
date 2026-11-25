@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Small DevOps Task Tracker - EC2, DynamoDB, CloudWatch, SNS
+Parameters:
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Existing EC2 key pair for SSH access
+  SSHAllowedCIDR:
+    Type: String
+    Default: 0.0.0.0/32
+    Description: Your public IP in CIDR format (example 203.0.113.10/32). Replace before deploy.
+  AlertEmail:
+    Type: String
+    Description: Email address for CloudWatch alarm notifications
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    AllowedValues: [t2.micro, t3.micro, t3.small]
+Resources:
+  TaskTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${AWS::StackName}-tasks'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${AWS::StackName}-alerts'
+  AlertSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+      TopicArn: !Ref AlertTopic
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP and SSH from specified sources
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SSHAllowedCIDR
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+  AppRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: TaskTableAccessAndLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:PutItem, dynamodb:Scan]
+                Resource: !GetAtt TaskTable.Arn
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents, logs:DescribeLogStreams]
+                Resource: '*'
+              - Effect: Allow
+                Action: cloudwatch:PutMetricData
+                Resource: '*'
+  AppInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref AppRole]
+  AppInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPairName
+      ImageId: '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}'
+      SecurityGroupIds: [!Ref AppSecurityGroup]
+      IamInstanceProfile: !Ref AppInstanceProfile
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-app-server'
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -eux
+          dnf update -y
+          dnf install -y nodejs npm nginx amazon-cloudwatch-agent
+          mkdir -p /opt/task-tracker /var/log/task-tracker
+          chown -R ec2-user:ec2-user /opt/task-tracker /var/log/task-tracker
+          cat >/etc/systemd/system/task-tracker.service <<'SERVICE'
+          [Unit]
+          Description=DevOps Task Tracker web app
+          After=network.target
+          [Service]
+          Type=simple
+          WorkingDirectory=/opt/task-tracker
+          Environment=PORT=3000
+          Environment=TABLE_NAME=${TaskTable}
+          ExecStart=/usr/bin/npm start
+          StandardOutput=append:/var/log/task-tracker/app.log
+          StandardError=append:/var/log/task-tracker/app.log
+          Restart=always
+          RestartSec=5
+          User=ec2-user
+          [Install]
+          WantedBy=multi-user.target
+          SERVICE
+          cat >/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'CWCONFIG'
+          {
+            "metrics": {"namespace":"DevOpsTaskTracker","append_dimensions":{"InstanceId":"${!aws:InstanceId}"},"metrics_collected":{"mem":{"measurement":["mem_used_percent"],"metrics_collection_interval":60},"disk":{"measurement":["used_percent"],"resources":["/"],"metrics_collection_interval":60}}},
+            "logs":{"logs_collected":{"files":{"collect_list":[{"file_path":"/var/log/task-tracker/app.log","log_group_name":"/devops-task-tracker/app","log_stream_name":"{instance_id}","timezone":"UTC"}]}}}
+          }
+          CWCONFIG
+          systemctl enable amazon-cloudwatch-agent
+          systemctl start amazon-cloudwatch-agent
+          systemctl daemon-reload
+          cat >/etc/nginx/conf.d/task-tracker.conf <<'NGINX'
+          server {
+            listen 80;
+            server_name _;
+            location / {
+              proxy_pass http://127.0.0.1:3000;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+            }
+          }
+          NGINX
+          nginx -t
+          systemctl enable nginx
+          systemctl start nginx
+          systemctl enable task-tracker
+          echo 'EC2 bootstrap complete. GitHub Actions will deploy the application files.' > /var/log/task-tracker/app.log
+  CPUAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Alert when EC2 CPU stays above 70 percent
+      Namespace: AWS/EC2
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref AppInstance
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 70
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+  MemoryAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Alert when instance memory usage exceeds 85 percent
+      Namespace: DevOpsTaskTracker
+      MetricName: mem_used_percent
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref AppInstance
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 85
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+Outputs:
+  WebURL:
+    Description: Open this URL after the GitHub Actions deployment succeeds
+    Value: !Sub 'http://${AppInstance.PublicDnsName}'
+  InstanceId:
+    Value: !Ref AppInstance
+  TaskTableName:
+    Value: !Ref TaskTable
+  SNSAlertTopic:
+    Value: !Ref AlertTopic
