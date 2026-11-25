@@ -113,3 +113,5 @@ CloudFormation → select stack → Delete. This deletes stack resources includi
 - Use GitHub Actions OIDC to assume an AWS role instead of SSH-based deployment.
 - Use a private subnet, load balancer, and managed database for a production-style architecture.
 - Add DynamoDB pagination and tests for API endpoints.
+
+- Added few lines in the end
