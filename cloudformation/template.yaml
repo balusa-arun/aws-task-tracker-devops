@@ -6,7 +6,7 @@ Parameters:
     Description: Existing EC2 key pair for SSH access
   SSHAllowedCIDR:
     Type: String
-    Default: 0.0.0.0/32
+    Default: 0.0.0.0/0
     Description: Your public IP in CIDR format (example 203.0.113.10/32). Replace before deploy.
   AlertEmail:
     Type: String
@@ -71,11 +71,31 @@ Resources:
                 Action: [dynamodb:PutItem, dynamodb:Scan]
                 Resource: !GetAtt TaskTable.Arn
               - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:DescribeTable
+                Resource: !GetAtt TaskTable.Arn
+              - Effect: Allow
                 Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents, logs:DescribeLogStreams]
                 Resource: '*'
               - Effect: Allow
                 Action: cloudwatch:PutMetricData
                 Resource: '*'
+        - PolicyName: S3DeploymentArtifactAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - arn:aws:s3:::task-tracker-deploy-400714277542/*
+            
   AppInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
