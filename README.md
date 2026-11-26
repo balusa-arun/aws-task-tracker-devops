@@ -11,13 +11,6 @@ This is a small but end-to-end project: CloudFormation provisions EC2, DynamoDB,
 - SNS: sends alarm emails (confirm the subscription email when AWS sends the confirmation).
 - GitHub Actions: runs tests and deploys on pushes to `main`.
 
-## Four-hour schedule
-1. 0:00–0:25 — Create repo, understand the folders, set up key pair.
-2. 0:25–1:00 — Deploy CloudFormation stack and confirm email subscription.
-3. 1:00–1:45 — Configure SSH and GitHub secrets; first deployment.
-4. 1:45–2:30 — Verify web app and DynamoDB writes.
-5. 2:30–3:15 — CloudWatch dashboards/logs and alarms.
-6. 3:15–4:00 — Trigger a code change, observe deployment, cleanup or document.
 
 ## 1. Prerequisites
 - AWS account with permissions to create EC2, IAM roles/policies, DynamoDB, SNS, CloudWatch, CloudFormation.
