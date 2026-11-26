@@ -10,7 +10,7 @@ main{max-width:850px;margin:36px auto;padding:0 18px}.panel{background:white;pad
 form{display:flex;gap:10px}input{flex:1;padding:12px;border:1px solid #ccd5e2;border-radius:8px;font-size:16px}button{border:0;background:#2563eb;color:white;padding:12px 18px;border-radius:8px;font-weight:600;cursor:pointer}button:hover{background:#1d4ed8}
 ul{padding:0}#tasks{list-style:none;padding:0;margin:18px 0 0}#tasks li{padding:14px 12px;border-bottom:1px solid #e5eaf0;display:flex;justify-content:space-between;gap:10px}small{color:#68758a}#status{margin-top:12px;color:#52627a}.pill{font-size:12px;color:#2563eb;background:#eff6ff;padding:4px 8px;border-radius:999px}
 </style></head><body>
-<header><h1>DevOps Task Tracker</h1><p>Simple app • Express API • DynamoDB • AWS CloudFormation • GitHub Actions</p></header>
+<header><h1>DevOps Task Tracker</h1><p>Simple app • Express API • DynamoDB • AWS CloudFormation • GitHub Actions integrated with OIDC</p></header>
 <main><section class="panel"><h2>Add a task</h2><form id="taskForm"><input id="taskTitle" maxlength="200" placeholder="e.g. Deploy app to EC2" required><button type="submit">Save task</button></form><div id="status"></div><h2>Tasks saved in AWS</h2><ul id="tasks"></ul></section></main>
 <script>
 const form=document.querySelector('#taskForm'), title=document.querySelector('#taskTitle'), list=document.querySelector('#tasks'), status=document.querySelector('#status');
