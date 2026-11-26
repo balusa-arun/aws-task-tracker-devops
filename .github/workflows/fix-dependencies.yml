@@ -1,0 +1,66 @@
+name: Fix npm Dependencies
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  fix-dependencies:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm install
+
+      - name: Check current vulnerabilities
+        working-directory: app
+        run: npm audit --omit=dev || true
+
+      - name: Fix npm vulnerabilities
+        working-directory: app
+        run: npm audit fix
+
+      - name: Check vulnerabilities after fix
+        working-directory: app
+        run: |
+          npm audit --omit=dev || true
+
+      - name: Run application tests
+        working-directory: app
+        run: npm test
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "fix: update vulnerable npm dependencies"
+          branch: fix/npm-security-vulnerabilities
+          delete-branch: true
+          title: "Fix npm security vulnerabilities"
+          body: |
+            ## Dependency Security Updates
+
+            This PR updates vulnerable npm dependencies.
+
+            Changes:
+            - Applied npm audit fix
+            - Updated dependency lockfile
+            - Ran application tests
+
+            Please review the dependency changes
+            and remaining audit findings before merging.
+          add-paths: |
+            app/package.json
+            app/package-lock.json
